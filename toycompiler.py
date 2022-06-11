@@ -8,10 +8,8 @@ from z3 import Solver, sat, Or, Z3Exception, is_array, Z3_UNINTERPRETED_SORT
 GRAMMAR = """
 ?start: sum
   | sum "?" sum ":" sum -> if
-  | sum "<"  sum        -> lt
   | sum "=="  sum       -> eq 
-  | sum "&"  sum        -> and
-
+  
 ?sum: term
   | sum "+" term        -> add
   | sum "-" term        -> sub
@@ -42,9 +40,8 @@ def interp(tree, lookup):
     Pass a tree as a Lark `Tree` object for the parsed expression. For
     `lookup`, provide a function for mapping variable names to values.
     """
-
     op = tree.data
-    if op in ('add', 'sub', 'mul', 'div', 'shl', 'shr', 'gt', 'lt', 'eq', 'and'):  # Binary operators.
+    if op in ('add', 'sub', 'mul', 'div', 'shl', 'shr'):  # Binary operators.
         lhs = interp(tree.children[0], lookup)
         rhs = interp(tree.children[1], lookup)
         if op == 'add':
@@ -59,19 +56,6 @@ def interp(tree, lookup):
             return lhs << rhs
         elif op == 'shr':
             return lhs >> rhs
-        elif op == 'lt':
-            return False
-        elif op == 'eq':
-            if lhs == rhs:
-                return True
-            return False
-        elif op == '&':
-            if lhs and rhs:
-                return True
-            return False
-        elif op == 'gt':
-            if lhs > rhs:  # Negation.
-                return 1
     elif op == 'neg':  # Negation.
         sub = interp(tree.children[0], lookup)
         return -sub
@@ -173,12 +157,12 @@ def get_wpi_model(F):
     s = Solver()
     s.add(F)
     print("Enemurating SAT models.....")
-    while s.check() == sat:
+    while s.check() == sat and counter < 2000:
         m = s.model()
         counter+=1
         #print("Model " + str(counter))
         #print(s.model)
-        # print (sorted ([(d, m[d]) for d in m], key = lambda x: str(x[0])))
+        print (sorted ([(d, m[d]) for d in m], key = lambda x: str(x[0])))
         # print()
         if len(s.model()) > max_cost:
             max_cost = len(s.model())
@@ -216,8 +200,11 @@ def solve(phi):
     s = z3.Solver()
     s.add(phi)
     s.check()
-    # print(s.check())
-    return get_wpi_model(phi)
+    #print ("Randomly picked")
+    random_sat = s.model()
+    #print(s.model())
+    wpi = get_wpi_model(phi)
+    return random_sat, wpi
 
 
 def synthesize(tree1, tree2):
@@ -238,19 +225,26 @@ def synthesize(tree1, tree2):
         list(plain_vars.values()),  # For every valuation of variables...
         expr1 == expr2,  # ...the two expressions produce equal results.
     )
+    print(goal)
     return solve(goal)
 
 
 if __name__ == '__main__':
-    f1 = open("s3.txt", "r")
+    f1 = open("s2.txt", "r")
     src = f1.read()
-    f2 = open("o3.txt", "r")
+    f2 = open("o2.txt", "r")
     output = f2.read()
     print("Specification reading done")
     parser = lark.Lark(GRAMMAR)
     output_tree = parser.parse(output)
     src_tree = parser.parse(src)
     print("Tree parsing done")
-    model = synthesize(output_tree, src_tree)
-    print("wpi program")
-    print(pretty(src_tree, model_values(model)))
+    random_model,wpi_model = synthesize(output_tree, src_tree)
+    if(len(wpi_model)>0):
+        print("random")
+        print(pretty(src_tree, model_values(random_model)))
+        print("wpi")
+        #print(model)
+        print(pretty(src_tree, model_values(wpi_model)))
+    else:
+        print("UNSAT")
